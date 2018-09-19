@@ -19,7 +19,7 @@ dieWithUsage("suite name required") unless $suite eq "tpcds" or $suite eq "tpch"
 
 chdir $SCRIPT_PATH;
 if( $suite eq 'tpcds' ) {
-	chdir "sample-queries-tpcds";
+	chdir 'sample-queries-tpcds';
 } else {
 	chdir 'sample-queries-tpch';
 } # end if
