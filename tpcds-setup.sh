@@ -111,8 +111,7 @@ if [ $SCALE -eq 1 ]; then
 fi
 
 # Do the actual data load.
-#hdfs dfs -mkdir -p ${DIR}
-
+hdfs dfs -mkdir -p ${DIR}
 hdfs dfs -ls ${DIR}/${SCALE} > /dev/null
 if [ $? -ne 0 ]; then
 	echo "Generating data at scale factor $SCALE."
@@ -124,30 +123,35 @@ if [ $? -ne 0 ]; then
 	exit 1
 fi
 
-hadoop fs -chmod -R 777  ${DIR}/${SCALE} > /dev/null
-if [ $? -ne 0 ]; then
-	echo "Data generation failed, exiting. Check your HDFS permissions on the directory you wish to create"
-	exit 1
-fi
+hadoop fs -chmod -R 777  ${DIR}/${SCALE} > dev/null
 
 echo "TPC-DS text data generation complete."
 
 if [ "$CLITYPE" == "beeline" ]; then
-    HIVE="beeline -u 'jdbc:hive2://${SERVER}:${PORT}/;serviceDiscoveryMode=zooKeeper;zooKeeperNamespace=hiveserver2' "
+    HIVE="beeline -u 'jdbc:hive2://${SERVER}:${PORT}/;serviceDiscoveryMode=zooKeeper;zooKeeperNamespace=hiveserver2;' "
 else
     HIVE="hive -i settings/load-flat.sql -f ddl-tpcds/text/alltables.sql -d DB=tpcds_text_${SCALE} -d LOCATION=${DIR}/${SCALE}"
 fi
 
 # Create the text/flat tables as external tables. These will be later be converted to ORCFile.
 echo "Loading text data into external tables."
-runcommand "$HIVE  -i settings/load-flat.sql -f ddl-tpcds/text/alltables.sql --hivevar DB=tpcds_text_${SCALE} --hivevar LOCATION=${DIR}/${SCALE}"
+echo "$HIVE"
+echo "..."
+runcommand "$HIVE -n hdfs -i settings/load-flat.sql -f ddl-tpcds/text/alltables.sql --hivevar DB=tpcds_text_${SCALE} --hivevar LOCATION=${DIR}/${SCALE}"
+
+if [ $? -ne 0 ]; then
+	echo "Failed to load text data to external tables: ${DIR}/$SCALE."
+        exit -1
+fi
 
 # Create the partitioned and bucketed tables.
 if [ "X$FORMAT" = "X" ]; then
 	FORMAT=orc
 fi
 
+
 LOAD_FILE="load_${FORMAT}_${SCALE}.mk"
+
 SILENCE="2> /dev/null 1> /dev/null" 
 if [ "X$DEBUG_SCRIPT" != "X" ]; then
 	SILENCE=""
@@ -160,11 +164,12 @@ total=24
 DATABASE=tpcds_bin_partitioned_${FORMAT}_${SCALE}
 MAX_REDUCERS=2500 # maximum number of useful reducers for any scale 
 REDUCERS=$((test ${SCALE} -gt ${MAX_REDUCERS} && echo ${MAX_REDUCERS}) || echo ${SCALE})
+
 # Populate the smaller tables.
 for t in ${DIMS}
 do
     if [ "$CLITYPE" == "beeline" ]; then
-        COMMAND="$HIVE -i settings/load-partitioned.sql -f ddl-tpcds/bin_partitioned/${t}.sql \
+        COMMAND="$HIVE -n hive -i settings/load-partitioned.sql -f ddl-tpcds/bin_partitioned/${t}.sql \
             --hivevar DB=${DATABASE} --hivevar SOURCE=tpcds_text_${SCALE} \
             --hivevar SCALE=${SCALE} \
             --hivevar REDUCERS=${REDUCERS} \
@@ -182,7 +187,7 @@ done
 for t in ${FACTS}
 do
     if [ "$CLITYPE" == "beeline" ]; then
-        COMMAND="$HIVE -i settings/load-partitioned.sql -f ddl-tpcds/bin_partitioned/${t}.sql \
+        COMMAND="$HIVE -n hive -i settings/load-partitioned.sql -f ddl-tpcds/bin_partitioned/${t}.sql \
             --hivevar DB=tpcds_bin_partitioned_${FORMAT}_${SCALE} \
             --hivevar SCALE=${SCALE} \
             --hivevar SOURCE=tpcds_text_${SCALE} --hivevar BUCKETS=${BUCKETS} \
@@ -197,5 +202,9 @@ do
     echo -e "${t}:\n\t@$COMMAND $SILENCE && echo 'Optimizing table $t ($i/$total).'" >> $LOAD_FILE
     i=`expr $i + 1`
 done
+
+
+echo "start to load data ..."
 make -j 1 -f $LOAD_FILE
+
 echo "Data loaded into database ${DATABASE}."
