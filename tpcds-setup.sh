@@ -111,7 +111,7 @@ if [ $SCALE -eq 1 ]; then
 fi
 
 # Do the actual data load.
-hdfs dfs -mkdir -p ${DIR}/${SCALE}
+# hdfs dfs -mkdir -p ${DIR}/${SCALE}
 hdfs dfs -ls ${DIR}/${SCALE} > /dev/null
 if [ $? -ne 0 ]; then
 	echo "Generating data at scale factor $SCALE."
@@ -119,7 +119,7 @@ if [ $? -ne 0 ]; then
 fi
 hdfs dfs -ls ${DIR}/${SCALE} > /dev/null
 if [ $? -ne 0 ]; then
-	echo "Data generation failed, exiting."
+	echo "Data generation failed, exiting.  Check to see if you've generated the MapReduce jar in /tpcds-gen directory"
 	exit 1
 fi
 
