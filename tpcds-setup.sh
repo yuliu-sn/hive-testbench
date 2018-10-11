@@ -111,7 +111,7 @@ if [ $SCALE -eq 1 ]; then
 fi
 
 # Do the actual data load.
-hdfs dfs -mkdir -p ${DIR}
+hdfs dfs -mkdir -p ${DIR}/${SCALE}
 hdfs dfs -ls ${DIR}/${SCALE} > /dev/null
 if [ $? -ne 0 ]; then
 	echo "Generating data at scale factor $SCALE."
